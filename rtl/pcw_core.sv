@@ -36,33 +36,33 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 module pcw_core(
-    input wire reset,           // Reset
+   input wire reset,           // Reset
 	input wire clk_sys,         // 64 Mhz System Clock
 
-    output logic [17:0] RGB,    // RGB Output (6-6-6)     
+   output logic [23:0] RGB,    // RGB Output (8-8-8)     
 	output logic hsync,         // Horizontal sync
 	output logic vsync,         // Vertical sync
 	output logic hblank,        // Horizontal blanking
 	output logic vblank,        // Vertical blanking
-    output logic ce_pix,        // Pixel clock
+   output logic ce_pix,        // Pixel clock
 
-    output logic LED,           // LED output
-    output logic [8:0] audiomix,
-    input wire [7:0] joy0,
-    input wire [7:0] joy1,
-    input wire [2:0] joy_type,
-    input wire [10:0] ps2_key,
-    input wire [24:0] ps2_mouse,
-    input wire [1:0] mouse_type,
-    input wire [1:0] disp_color,
-    input wire [1:0] overclock,
-    input wire ntsc,
-    input wire model,
-    input wire [1:0] memory_size,
-    input wire dktronics,
-    input wire [1:0] fake_colour_mode,
+   output logic LED,           // LED output
+   output logic [13:0] audiomix,
+   input wire [7:0] joy0,
+   input wire [7:0] joy1,
+   input wire [2:0] joy_type,
+   input wire [10:0] ps2_key,
+   input wire [24:0] ps2_mouse,
+   input wire [1:0] mouse_type,
+   input wire [1:0] disp_color,
+   input wire [1:0] overclock,
+   input wire ntsc,
+   input wire model,
+   input wire [1:0] memory_size,
+   input wire dktronics,
+   input wire [1:0] fake_colour_mode,
 
-    // SDRAM signals
+   // SDRAM signals
 	output        SDRAM_CLK,
 	output        SDRAM_CKE,
 	output [12:0] SDRAM_A,
@@ -74,21 +74,21 @@ module pcw_core(
 	output        SDRAM_nCAS,
 	output        SDRAM_nRAS,
 	output        SDRAM_nWE,
-    input         locked,
+   input         locked,
 
-    input wire dn_clk,
-    input wire dn_go,
-    input wire dn_wr,
-    input wire [24:0] dn_addr,
-    input wire [7:0] dn_data,
+   input wire dn_clk,
+   input wire dn_go,
+   input wire dn_wr,
+   input wire [24:0] dn_addr,
+   input wire [7:0] dn_data,
 
-    input wire [15:0] execute_addr,
-    input wire execute_enable,
+   input wire [15:0] execute_addr,
+   input wire execute_enable,
 
-    input wire [1:0]  img_mounted,
+   input wire [1:0]  img_mounted,
 	input wire        img_readonly,
 	input wire [31:0] img_size,
-    input wire [1:0]  density,
+   input wire [1:0]  density,
 
 	output logic [31:0] sd_lba,
 	output logic [1:0] sd_rd,
@@ -122,12 +122,13 @@ module pcw_core(
 
     logic fake_colour;
     assign fake_colour = (fake_colour_mode != 2'b00);
+	 logic fake_colour_ega;
+	 assign fake_colour_ega = (fake_colour_mode == 2'b10);
 
     // Audio channels
-    logic [7:0] ch_a;
-    logic [7:0] ch_b;
-    logic [7:0] ch_c;
-    logic [9:0] audio;
+    logic [11:0] ch_a;
+    logic [11:0] ch_b;
+    logic [11:0] ch_c;
     logic speaker_enable = 1'b0;
 
     // dpram addressing
@@ -626,11 +627,11 @@ module pcw_core(
         end
     end
 
-    logic [1:0] colour;
+    logic [3:0] colour;
 
-    logic [17:0] rgb_white;
-    logic [17:0] rgb_green;
-    logic [17:0] rgb_amber;
+    logic [23:0] rgb_white;
+    logic [23:0] rgb_green;
+    logic [23:0] rgb_amber;
 
     logic cpu_reg_set = 1'b0;
     logic [211:0] cpu_reg = 'b0;
@@ -647,6 +648,7 @@ module pcw_core(
         .disable_vid(disable_vid),
         .ntsc(ntsc),
         .fake_colour(fake_colour),
+		  .fake_colour_ega(fake_colour_ega),
         .fake_end(fake_end),
         .ypos(ypos),
 
@@ -675,26 +677,26 @@ module pcw_core(
     //     .q(debug_vid)
     // );
 
-    // Video colour processing
+     // Video colour processing
     always_comb begin
-        rgb_white = 18'b111111111111110111;
-        if(colour==2'b00) rgb_white = 18'b000000000000000000;
-        else if(colour==2'b11) rgb_white = 18'b111111111111110111;
+        rgb_white = 24'hAAAAAA;
+        if(colour==4'b0000) rgb_white = 24'h000000;
+        else if(colour==4'b1111) rgb_white = 24'hAAAAAA;
     end
 
     always_comb begin
-        rgb_green = 18'b011001111111011001;
-        if(colour==2'b00) rgb_green = 18'b000000000000000000;
-        else if(colour==2'b11) rgb_green = 18'b011001111111011001;
+        rgb_green = 24'h00aa00;
+        if(colour==4'b0000) rgb_green = 24'h000000;
+        else if(colour==4'b1111) rgb_green = 24'h00aa00;
     end
 
     always_comb begin
-        rgb_amber = 18'b111111101100000000;
-        if(colour==2'b00) rgb_amber = 18'b000000000000000000;
-        else if(colour==2'b11) rgb_amber = 18'b111111101100000000;
+        rgb_amber = 24'hff5500;
+        if(colour==4'b0000) rgb_amber = 24'h000000;
+        else if(colour==4'b1111) rgb_amber = 24'hff5500;
     end
 
-    logic [17:0] mono_colour;
+    logic [23:0] mono_colour;
     always_comb begin
         if(disp_color==2'b00) mono_colour = rgb_white;
         else if(disp_color==2'b01) mono_colour = rgb_green;
@@ -708,33 +710,37 @@ module pcw_core(
             case(fake_colour_mode)
                 2'b00: RGB = mono_colour;
                 2'b01: begin    // CGA Palette 0 Low
-                    case(colour)
-                        2'b00: RGB =  18'b000000000000000000;   // Black
-                        2'b01: RGB =  18'b000000101011000000;   // Dark Green
-                        2'b10: RGB =  18'b101011000000000000;   // Dark Red
-                        2'b11: RGB =  18'b101011010110000000;   // Brown
+                    case(colour[3:2])
+                        2'b00: RGB =  24'h000000;   // Black
+                        2'b01: RGB =  24'h00aaaa;   // Cyan
+                        2'b10: RGB =  24'haa00aa;   // Magenta
+                        2'b11: RGB =  24'haaaaaa;   // White
                     endcase                    
                 end
-                2'b10: begin    // CGA Palette 0 High
+                2'b10: begin    // EGA PALETTE
                     case(colour)
-                        2'b00: RGB =  18'b000000000000000000;   // Black
-                        2'b01: RGB =  18'b010110111111010110;   // Light Green
-                        2'b10: RGB =  18'b111111010110010110;   // Light Red
-                        2'b11: RGB =  18'b111111111111010110;   // Yellow
+                        4'b0000: RGB =  24'h000000;   // Black
+                        4'b0001: RGB =  24'h0000aa;   // Blue
+                        4'b0010: RGB =  24'h00aa00;   // Green
+                        4'b0011: RGB =  24'h00aaaa;   // Cyan
+                        4'b0100: RGB =  24'haa0000;   // Red
+                        4'b0101: RGB =  24'haa00aa;   // Magenta
+                        4'b0110: RGB =  24'haaaa00;   // Yellow
+                        4'b0111: RGB =  24'haaaaaa;   // White / gray
+                        4'b1000: RGB =  24'h555555;   // dark gray
+                        4'b1001: RGB =  24'h5555ff;   // Light blue
+                        4'b1010: RGB =  24'h55ff55;   // Light green
+                        4'b1011: RGB =  24'h55ffff;   // light cyan
+                        4'b1100: RGB =  24'hff5555;   // light red
+                        4'b1101: RGB =  24'hff55ff;   // Light magenta
+                        4'b1110: RGB =  24'hffff55;   // Light yellow
+                        4'b1111: RGB =  24'hffffff;   // bright white
                     endcase                    
                 end
-                2'b11: begin    // CGA Palette 1 High
-                    case(colour)
-                        2'b00: RGB =  18'b000000000000000000;   // Black
-                        2'b01: RGB =  18'b010110111111111111;   // Cyan
-                        2'b10: RGB =  18'b111111010110111111;   // Magenta
-                        2'b11: RGB =  rgb_white;   // White
-                    endcase                    
-                end
-            endcase
-        end
-    end
-
+				endcase
+			end
+	 end
+	 
     logic [7:0] daisy_dout;
     // Fake daisywheel printer interface
     fake_daisy daisy(
@@ -815,24 +821,23 @@ module pcw_core(
 
     logic [7:0] dk_out;
     // Audio processing
-    ym2149 soundchip(
-        .DI(cpudo),
-        .DO(dk_out),
+    psg soundchip(
+        .d      (cpudo),
+        .q      (dk_out),
 
-        .BDIR(dk_busdir),
-        .BC(dk_bc),
-        .SEL(1'b0),
-        .MODE(1'b0),
+        .bdir   (dk_busdir),
+        .bc1    (dk_bc),
+        .sel    (1'b0),
 
-        .CHANNEL_A(ch_a),
-        .CHANNEL_B(ch_b),
-        .CHANNEL_C(ch_c),
+        .a      (ch_a),
+        .b      (ch_b),
+        .c      (ch_c),
 
-        .IOA_in(dkjoy_io),
+        .ioad   (dkjoy_io),
 
-        .CE(snd_clk & dktronics),
-        .RESET(reset),
-        .CLK(clk_sys)
+        .ce     (snd_clk & dktronics),
+        .reset  (reset),
+        .clock  (clk_sys)
     ); 
 
     // Bleeper audio
@@ -842,11 +847,10 @@ module pcw_core(
         .speaker(speaker_out)
     );
 
-    logic [7:0] speaker = 'b0;
+    logic [11:0] speaker = 'b0;
     logic speaker_out;
-    assign speaker = {speaker_out, 6'b0};
-    assign audio = {2'b00,ch_a} + {2'b00,ch_b} + {2'b00,ch_c} + {2'b00,speaker};
-    assign audiomix = audio[9:1];
+    assign speaker = {speaker_out, 11'b0};
+    assign audiomix = {2'b00,ch_a} + {2'b00,ch_b} + {2'b00,ch_c} + {2'b00,speaker};
 
 
     // Floppy disk controller logic and control

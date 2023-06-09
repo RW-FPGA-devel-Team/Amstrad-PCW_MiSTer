@@ -1,0 +1,6 @@
+[submodule "rtl/T80"]
+	path = rtl/T80
+	url = https://github.com/mist-devel/T80.git
+[submodule "rtl/AY-3-891x"]
+	path = rtl/AY-3-891x
+	url = https://github.com/Kyp069/AY-3-891x.git

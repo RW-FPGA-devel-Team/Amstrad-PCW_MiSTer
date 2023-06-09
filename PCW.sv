@@ -1,10 +1,8 @@
 //============================================================================
-//  HT1080Z port to MiSTer
-//  Renamed to TRS-80 after Cassette and CMD loading support
-//  
-//  Copyright (c) 2019 Alan Steremberg - alanswx
 //
-//
+//  Amstrad PCW port to MiSTer
+//  Copyright (c) 2020 Stephen Eddy
+//  Color modes Copyright (c) 2020 habisoft
 //============================================================================
 
 module emu
@@ -17,7 +15,7 @@ module emu
 	input         RESET,
 
 	//Must be passed to hps_io module
-	inout  [45:0] HPS_BUS,
+	inout  [48:0] HPS_BUS,
 
 	//Base video clock. Usually equals to CLK_SYS.
 	output        CLK_VIDEO,
@@ -27,8 +25,9 @@ module emu
 	output        CE_PIXEL,
 
 	//Video aspect ratio for HDMI. Most retro systems have ratio 4:3.
-	output  [7:0] VIDEO_ARX,
-	output  [7:0] VIDEO_ARY,
+	//if VIDEO_ARX[12] or VIDEO_ARY[12] is set then [11:0] contains scaled size instead of aspect ratio.
+	output [12:0] VIDEO_ARX,
+	output [12:0] VIDEO_ARY,
 
 	output  [7:0] VGA_R,
 	output  [7:0] VGA_G,
@@ -38,6 +37,41 @@ module emu
 	output        VGA_DE,    // = ~(VBlank | HBlank)
 	output        VGA_F1,
 	output [1:0]  VGA_SL,
+	output        VGA_SCALER, // Force VGA scaler
+	output        VGA_DISABLE, // analog out is off
+
+	input  [11:0] HDMI_WIDTH,
+	input  [11:0] HDMI_HEIGHT,
+	output        HDMI_FREEZE,
+
+`ifdef MISTER_FB
+	// Use framebuffer in DDRAM
+	// FB_FORMAT:
+	//    [2:0] : 011=8bpp(palette) 100=16bpp 101=24bpp 110=32bpp
+	//    [3]   : 0=16bits 565 1=16bits 1555
+	//    [4]   : 0=RGB  1=BGR (for 16/24/32 modes)
+	//
+	// FB_STRIDE either 0 (rounded to 256 bytes) or multiple of pixel size (in bytes)
+	output        FB_EN,
+	output  [4:0] FB_FORMAT,
+	output [11:0] FB_WIDTH,
+	output [11:0] FB_HEIGHT,
+	output [31:0] FB_BASE,
+	output [13:0] FB_STRIDE,
+	input         FB_VBL,
+	input         FB_LL,
+	output        FB_FORCE_BLANK,
+
+`ifdef MISTER_FB_PALETTE
+	// Palette control for 8bit modes.
+	// Ignored for other video modes.
+	output        FB_PAL_CLK,
+	output  [7:0] FB_PAL_ADDR,
+	output [23:0] FB_PAL_DOUT,
+	input  [23:0] FB_PAL_DIN,
+	output        FB_PAL_WR,
+`endif
+`endif
 
 	output        LED_USER,  // 1 - ON, 0 - OFF.
 
@@ -52,16 +86,16 @@ module emu
 	// b[0]: osd button
 	output  [1:0] BUTTONS,
 
-	input		  CLK_AUDIO,
+	input         CLK_AUDIO, // 24.576 MHz
 	output [15:0] AUDIO_L,
 	output [15:0] AUDIO_R,
-	output        AUDIO_S, // 1 - signed audio samples, 0 - unsigned
+	output        AUDIO_S,   // 1 - signed audio samples, 0 - unsigned
 	output  [1:0] AUDIO_MIX, // 0 - no mix, 1 - 25%, 2 - 50%, 3 - 100% (mono)
-	input         TAPE_IN,
+
 	//ADC
 	inout   [3:0] ADC_BUS,
 
-	// SD-SPI
+	//SD-SPI
 	output        SD_SCK,
 	output        SD_MOSI,
 	input         SD_MISO,
@@ -94,13 +128,26 @@ module emu
 	output        SDRAM_nRAS,
 	output        SDRAM_nWE,
 
+`ifdef MISTER_DUAL_SDRAM
+	//Secondary SDRAM
+	//Set all output SDRAM_* signals to Z ASAP if SDRAM2_EN is 0
+	input         SDRAM2_EN,
+	output        SDRAM2_CLK,
+	output [12:0] SDRAM2_A,
+	output  [1:0] SDRAM2_BA,
+	inout  [15:0] SDRAM2_DQ,
+	output        SDRAM2_nCS,
+	output        SDRAM2_nCAS,
+	output        SDRAM2_nRAS,
+	output        SDRAM2_nWE,
+`endif
+
 	input         UART_CTS,
 	output        UART_RTS,
 	input         UART_RXD,
 	output        UART_TXD,
 	output        UART_DTR,
 	input         UART_DSR,
-
 
 	// Open-drain User port.
 	// 0 - D+/RX
@@ -113,8 +160,8 @@ module emu
 	input         OSD_STATUS
 );
 
-assign VGA_F1=0;
 
+assign VGA_F1=0;
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 assign USER_OUT = '1;
@@ -123,21 +170,29 @@ assign ADC_BUS  = 'Z;
 assign {SDRAM_DQ, SDRAM_A, SDRAM_BA, SDRAM_CLK, SDRAM_CKE, SDRAM_DQML, SDRAM_DQMH, SDRAM_nWE, SDRAM_nCAS, SDRAM_nRAS, SDRAM_nCS} = 'Z;
 
 assign BUTTONS = 0;
-
-// aspect ratio including all border space is  4:3
-// aspect ratio iwith partial border space is 20:17
-// aspect ratio of only displayed area is     11:10
-assign VIDEO_ARX = 4; //status[13] ? 4 : (status[12] ? 20 : 11);
-assign VIDEO_ARY = 3; //status[13] ? 3 : (status[12] ? 17 : 10);
-
 assign AUDIO_S = 0;
 assign AUDIO_MIX = 0;
 
 assign LED_DISK  = LED;				/* later add disk motor on/off */
 assign LED_POWER = 0;
-assign LED_USER  = ioctl_download;
 
 localparam BOOT_ROM_END = 16'd275;	// Length of boot rom
+
+
+wire [1:0] ar = status[21:20];
+video_freak video_freak
+(
+	.*,
+	.VGA_DE_IN(VGA_DE),
+	.VGA_DE(),
+
+	.ARX((!ar) ? 12'd4 : (ar - 1'd1)),
+	.ARY((!ar) ? 12'd3 : 12'd0),
+	.CROP_SIZE(0),
+	.CROP_OFF(0),
+	.SCALE(status[23:22])
+);
+
 
 `include "build_id.v"
 localparam CONF_STR = {
@@ -151,10 +206,11 @@ localparam CONF_STR = {
 	"-;",	
 	"O56,Screen Color,White,Green,Amber;",
 	"O7,Video System,PAL,NTSC;",
-	"OIJ,Fake Colour,None,Palette 1, Palette 2, Palette 3;",
-	"O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
+	"OIJ,Fake Colour,None,CGA 4 colours,EGA 16 colours ;",
+	"OKL,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
+	"O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%, CRT 75%;",
+	"OMN,Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
 	"-;",
-//	"O4,Kbd Layout,PCW,PC;",
 	"OAC,Joystick Type,None,Kempston,Spectravideo,Cascade,DKTronics;",
 	"ODE,Mouse Type,None,AMX,Kempston,Keymouse;",
 	"OH,DKTronics I/F,Disabled,Enabled;",
@@ -170,18 +226,12 @@ pll pll
 (
 	.refclk   (CLK_50M),
 	.rst      (0),
-	.outclk_0 (clk_sys), // 32 MHz
+	.outclk_0 (clk_sys), // 64 MHz
 	.locked	  (locked)
 );
 
 wire [31:0] status;
 wire  [1:0] buttons;
-wire        ioctl_download;
-wire        ioctl_wr;
-wire [15:0] ioctl_addr;
-wire  [7:0] ioctl_data;
-wire  [7:0] ioctl_index;
-wire		ioctl_wait;
 wire [31:0] sd_lba;
 wire  [1:0] sd_rd;
 wire  [1:0] sd_wr;
@@ -199,16 +249,15 @@ wire [10:0] ps2_key;
 wire [24:0] ps2_mouse;
 
 wire [21:0] gamma_bus;
+wire        freeze_sync;
 
 wire [15:0] joystick_0, joystick_1;
 wire LED;
 
-hps_io #(.STRLEN(($size(CONF_STR)>>3) ), .WIDE(0), .VDNUM(2)) hps_io
+hps_io #(.CONF_STR(CONF_STR), .VDNUM(2)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
-
-	.conf_str(CONF_STR),
 
 	.ps2_key(ps2_key),
 	.ps2_mouse(ps2_mouse),
@@ -220,21 +269,14 @@ hps_io #(.STRLEN(($size(CONF_STR)>>3) ), .WIDE(0), .VDNUM(2)) hps_io
 	.gamma_bus(gamma_bus),
 
 	.status(status),
-
-	.ioctl_download(ioctl_download),
-	.ioctl_wr(ioctl_wr),
-	.ioctl_addr(ioctl_addr),
-	.ioctl_dout(ioctl_data),
-	.ioctl_wait(ioctl_wait),
-	.ioctl_index(ioctl_index),
-
-	.sd_lba(sd_lba),
+   
+	.sd_lba('{sd_lba,sd_lba}),
 	.sd_rd(sd_rd),
 	.sd_wr(sd_wr),
 	.sd_ack(sd_ack),
 	.sd_buff_addr(sd_buff_addr),
 	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_din(sd_buff_din),
+   .sd_buff_din('{sd_buff_din,sd_buff_din}),
 	.sd_buff_wr(sd_buff_wr),
 
 	.img_mounted(img_mounted),
@@ -242,8 +284,7 @@ hps_io #(.STRLEN(($size(CONF_STR)>>3) ), .WIDE(0), .VDNUM(2)) hps_io
 	.img_size(img_size)
 );
 
-wire rom_download = ioctl_download && ioctl_index==0;
-wire reset = RESET | status[0] | buttons[1] | rom_download;
+wire reset = RESET | status[0] | buttons[1];
 
 // signals from loader
 logic loader_wr;		
@@ -365,7 +406,7 @@ pcw_core pcw_core
 
 ///////////////////////////////////////////////////
 wire        ce_pix;
-wire [17:0] RGB;
+wire [23:0] RGB;
 wire        HSync,VSync,HBlank,VBlank;
 
 wire  [2:0] scale = status[3:1];
@@ -373,28 +414,21 @@ wire  [2:0] sl = scale > 1'd1 ? scale - 1'd1 : 3'd0;
 
 assign CLK_VIDEO = clk_sys;
 assign VGA_SL = sl[1:0];
+assign HDMI_FREEZE = 0;
 
-video_mixer #(.LINE_LENGTH(1024), .GAMMA(1)) video_mixer
+video_mixer #(.GAMMA(1)) video_mixer
 (
 	.*,
-
-	.clk_vid(clk_sys),
-	.ce_pix_out(CE_PIXEL),
-
-	.scanlines(0),
 	.scandoubler(scale || forced_scandoubler),
 	.hq2x(scale==3'b001),
-
-	.mono(0),
-
-	.B({RGB[5:0],RGB[5:4]}),
-	.G({RGB[11:6],RGB[11:10]}),
-	.R({RGB[17:12],RGB[17:16]})
+	.B({RGB[7:0]}),
+	.G({RGB[15:8]}),
+	.R({RGB[23:16]})
 );
 
-wire  [8:0] audiomix;
+wire  [13:0] audiomix;
 
-assign AUDIO_L={audiomix,7'b0000000};
+assign AUDIO_L={audiomix,2'b00};
 assign AUDIO_R=AUDIO_L;
 
 endmodule
