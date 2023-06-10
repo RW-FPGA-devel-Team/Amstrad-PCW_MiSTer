@@ -125,10 +125,7 @@ module pcw_core(
 	 logic fake_colour_ega;
 	 assign fake_colour_ega = (fake_colour_mode == 2'b10);
 
-    // Audio channels
-    logic [11:0] ch_a;
-    logic [11:0] ch_b;
-    logic [11:0] ch_c;
+
     logic speaker_enable = 1'b0;
 
     // dpram addressing
@@ -681,19 +678,19 @@ module pcw_core(
     always_comb begin
         rgb_white = 24'hAAAAAA;
         if(colour==4'b0000) rgb_white = 24'h000000;
-        else if(colour==4'b1111) rgb_white = 24'hAAAAAA;
+        else if(colour==4'b1111) rgb_white = 24'hFFFFFF;
     end
 
     always_comb begin
         rgb_green = 24'h00aa00;
         if(colour==4'b0000) rgb_green = 24'h000000;
-        else if(colour==4'b1111) rgb_green = 24'h00aa00;
+        else if(colour==4'b1111) rgb_green = 24'h00ff00;
     end
 
     always_comb begin
         rgb_amber = 24'hff5500;
         if(colour==4'b0000) rgb_amber = 24'h000000;
-        else if(colour==4'b1111) rgb_amber = 24'hff5500;
+        else if(colour==4'b1111) rgb_amber = 24'hffff00;
     end
 
     logic [23:0] mono_colour;
@@ -829,14 +826,12 @@ module pcw_core(
         .bc1    (dk_bc),
         .sel    (1'b0),
 
-        .a      (ch_a),
-        .b      (ch_b),
-        .c      (ch_c),
+        .mix    (psg_mix),
 
         .ioad   (dkjoy_io),
 
         .ce     (snd_clk & dktronics),
-        .reset  (reset),
+        .reset  (~reset),
         .clock  (clk_sys)
     ); 
 
@@ -849,8 +844,9 @@ module pcw_core(
 
     logic [11:0] speaker = 'b0;
     logic speaker_out;
-    assign speaker = {speaker_out, 11'b0};
-    assign audiomix = {2'b00,ch_a} + {2'b00,ch_b} + {2'b00,ch_c} + {2'b00,speaker};
+	 wire [14:0] psg_mix;
+    assign speaker = {speaker_out, 10'b0};
+    assign audiomix = psg_mix + speaker;
 
 
     // Floppy disk controller logic and control
